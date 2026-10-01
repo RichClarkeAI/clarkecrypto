@@ -1,18 +1,19 @@
 # clarkecrypto.com — static mirror notes
 
 Source: Wix site https://www.clarkecrypto.com. Captured 2026-10-01 with Playwright (headless Chromium, 1440px viewport).
-Rebuild with `/home/rich/clawd/integrations/fmls/.venv/bin/python tools/build.py`, check with `tools/verify.py`.
+Rebuild with `/home/rich/clawd/integrations/fmls/.venv/bin/python tools/build.py` (desktop) and `tools/build.py --mobile` (mobile). Check with `tools/verify.py` and `tools/verify.py --mobile`.
 
 ## Page inventory
 
 | URL | Local file | Notes |
 |---|---|---|
 | https://www.clarkecrypto.com/ | `mirror/index.html` | The only page. The sitemap lists only the homepage, and every internal link in the rendered DOM is an in-page `#anchor`. |
+| https://www.clarkecrypto.com/ (phone UA) | `mirror/m.html` | Wix's separate mobile layout. See "Mobile layout" below. |
 | (favicon) | `mirror/favicon.ico` | Wix's generic default favicon. The site never set its own. |
 | — | `mirror/robots.txt` | Added: allow all. |
 
 Assets: `mirror/assets/img/` (13 images), `mirror/assets/fonts/` (37 woff2: Roboto, Helvetica, and Proxima Nova from the Wix CDN).
-**Total size: about 1.1 MB (1,140,525 bytes), 53 files.** No build step is needed. Upload `mirror/` as-is to GitHub Pages or Vercel.
+**Total size (with mobile): about 1.9 MB (1,899,915 bytes), 67 files.** No build step is needed. Upload `mirror/` as-is to GitHub Pages or Vercel.
 
 ## What was stripped and why
 
@@ -36,6 +37,24 @@ Assets: `mirror/assets/img/` (13 images), `mirror/assets/fonts/` (37 woff2: Robo
 
 - `tools/verify.py` loads `file://…/mirror/index.html` with **all non-file network blocked**. Results: 0 console errors, 0 failed local requests, 0 broken images, fonts loaded locally. All of these text checks pass: "About Rich Clarke", the bio paragraphs, "Our Services", "Fundamental Resources", and rich@clarkecrypto.com.
 - Screenshots: `screenshots/original-index.png` vs `screenshots/mirror-index.png`. Both are 1440×6272. A pixel diff shows 0.020% of pixels differing by more than 40/255, which is anti-aliasing-level noise. There are no visible layout, font, or image differences.
+
+## Mobile layout (dual-snapshot)
+
+Wix doesn't use responsive CSS. It generates a **separate mobile layout in JS** (`wixMobileViewport`, a fixed 320px column) for phone user agents, so the desktop capture has no `@media` rules and looked squished on phones. Fix: capture the site twice.
+- `tools/build.py --mobile` renders the live site as an iPhone 13 (Playwright device: mobile UA, touch, DPR 3) at 375×812. It applies the same cleaning as desktop and writes `mirror/m.html`. Assets are deduped by content: anything byte-identical to an existing file reuses it, which covered all fonts. The 12 mobile image variants (different crops/sizes) were added to `assets/img/`.
+- Viewport meta in `m.html` is `width=device-width, initial-scale=1`. The live site uses `width=320` and lets the browser upscale the 320px column. To match that, the `m.html` head script sets `document.documentElement.style.zoom = innerWidth/320` when the screen is wider than 320px.
+- **Switcher:** an inline `<script>` is the first thing in `<head>` after charset and viewport, so it runs before any CSS. It only runs on load, with no resize listener, so it can't loop.
+  - `index.html`: `matchMedia("(max-width: 767px)")` → `location.replace("./m.html")`
+  - `m.html`: `matchMedia("(min-width: 768px)")` → `location.replace("./index.html")`
+  - `build.py` re-injects both on every build (`finalize()`). It is idempotent.
+- Edits to text must now be made in **both** `index.html` and `m.html`.
+
+Mobile verification (`tools/verify.py --mobile`, network blocked):
+- 0 console errors, 0 failed local requests, 0 broken images. No horizontal overflow (scrollWidth 375 = innerWidth).
+- All text checks pass: bio, Our Services, Fundamental Resources, rich@clarkecrypto.com.
+- A desktop viewport opening `m.html` is sent to `index.html`. A phone opening `index.html` is sent to `m.html`.
+- Screenshots: `screenshots/original-mobile.png` (live site, 320 CSS px × DPR 3) vs `screenshots/mirror-mobile.png` (375 × DPR 3). Side by side they look the same: same sections, images, fonts and colors. The zoomed text wraps a little differently in the long bio paragraphs, so the mirror is about 0.5% taller (8421 vs 8381 scaled CSS px). The pixel diff over the top half after scaling is 4.6% (resampling plus that drift). The whole-page number (12%) is dominated by the vertical offset.
+- Desktop re-checked after adding the switcher: `index.html` at 1440px has 0 console errors and all text checks pass. Pixel diff vs `original-index.png` is 0.003%.
 
 ## Editing content later
 
